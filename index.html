@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Genesis — From Nothing</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #020408; overflow: hidden; }
+
+    #canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .panel {
+      position: fixed;
+      background: rgba(4, 6, 16, 0.92);
+      border: 1px solid rgba(120, 214, 255, 0.12);
+      border-radius: 10px;
+      padding: 16px 20px;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+      font-family: 'SF Mono', ui-monospace, monospace;
+      color: #e0e8ff;
+    }
+
+    #header {
+      top: 20px; left: 20px; min-width: 320px;
+    }
+
+    h1 {
+      font-size: 15px;
+      color: #78d6ff;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .desc {
+      font-size: 11px;
+      color: rgba(180, 200, 255, 0.55);
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 6px 0;
+      font-size: 11px;
+    }
+    .label { color: rgba(180, 200, 255, 0.5); }
+    .value { color: #ffd86a; font-variant-numeric: tabular-nums; }
+
+    .grade-bar {
+      display: flex;
+      gap: 3px;
+      margin: 8px 0;
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .grade-bar > div { transition: flex 0.3s ease; border-radius: 3px; min-width: 0; }
+    .g0 { background: #ff3333; }
+    .g1 { background: #ff9900; }
+    .g2 { background: #00ff33; }
+    .g3 { background: #00ccff; }
+    .g4 { background: #cc00ff; }
+
+    #timeline {
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      min-width: 500px;
+      max-width: 700px;
+      width: 50vw;
+    }
+
+    .time-display {
+      font-size: 24px;
+      color: #78d6ff;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      margin-bottom: 6px;
+    }
+    .time-display .unit {
+      font-size: 11px;
+      color: rgba(180, 200, 255, 0.4);
+      margin-left: 4px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: #78d6ff;
+      margin: 8px 0;
+    }
+
+    .controls-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    button {
+      padding: 7px 16px;
+      background: rgba(120, 214, 255, 0.1);
+      border: 1px solid rgba(120, 214, 255, 0.2);
+      color: #78d6ff;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: rgba(120, 214, 255, 0.2); }
+    button.active {
+      background: rgba(120, 214, 255, 0.35);
+      border-color: #78d6ff;
+    }
+
+    #wavefronts {
+      top: 20px; right: 20px; min-width: 200px;
+    }
+
+    .wavefront-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 5px 0;
+      font-size: 11px;
+    }
+    .wavefront-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .wavefront-name { color: rgba(180, 200, 255, 0.6); flex: 1; }
+    .wavefront-r { color: #ffd86a; font-variant-numeric: tabular-nums; }
+
+    .hint {
+      font-size: 10px;
+      color: rgba(180, 200, 255, 0.35);
+      margin-top: 10px;
+      line-height: 1.6;
+    }
+
+    kbd {
+      background: rgba(0,0,0,0.4);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(120,214,255,0.15);
+      color: #78d6ff;
+      font-size: 10px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <div class="panel" id="header">
+    <h1>Genesis &mdash; From Nothing</h1>
+    <p class="desc">
+      Cl(3,1) Clifford field evolving from the zero vector.<br>
+      Each grade propagates at c&middot;&phi;<sup>&minus;k/2</sup>. Structure emerges from interference.
+    </p>
+    <div class="row">
+      <span class="label">Grade spectrum</span>
+    </div>
+    <div class="grade-bar" id="grade-bar">
+      <div class="g0" style="flex:1"></div>
+      <div class="g1" style="flex:0"></div>
+      <div class="g2" style="flex:0"></div>
+      <div class="g3" style="flex:0"></div>
+      <div class="g4" style="flex:0"></div>
+    </div>
+    <div class="row" style="font-size:10px;">
+      <span style="color:#ff3333;">Scalar</span>
+      <span style="color:#ff9900;">Vector</span>
+      <span style="color:#00ff33;">Bivector</span>
+      <span style="color:#00ccff;">Trivector</span>
+      <span style="color:#cc00ff;">Pseudo</span>
+    </div>
+    <div class="row">
+      <span class="label">Coherence</span>
+      <span class="value" id="val-coherence">0.000</span>
+    </div>
+    <div class="hint">
+      <kbd>Space</kbd> pause &middot; <kbd>R</kbd> reset &middot; scroll to zoom &middot; drag to orbit
+    </div>
+  </div>
+
+  <div class="panel" id="wavefronts">
+    <h1>Wavefronts</h1>
+    <div class="wavefront-row">
+      <div class="wavefront-dot" style="background:#ff3333;"></div>
+      <span class="wavefront-name">Scalar (c)</span>
+      <span class="wavefront-r" id="wf-0">0.00</span>
+    </div>
+    <div class="wavefront-row">
+      <div class="wavefront-dot" style="background:#ff9900;"></div>
+      <span class="wavefront-name">Vector (&phi;<sup>&minus;&frac12;</sup>c)</span>
+      <span class="wavefront-r" id="wf-1">0.00</span>
+    </div>
+    <div class="wavefront-row">
+      <div class="wavefront-dot" style="background:#00ff33;"></div>
+      <span class="wavefront-name">Bivector (&phi;<sup>&minus;1</sup>c)</span>
+      <span class="wavefront-r" id="wf-2">0.00</span>
+    </div>
+    <div class="wavefront-row">
+      <div class="wavefront-dot" style="background:#00ccff;"></div>
+      <span class="wavefront-name">Trivector (&phi;<sup>&minus;3/2</sup>c)</span>
+      <span class="wavefront-r" id="wf-3">0.00</span>
+    </div>
+    <div class="wavefront-row">
+      <div class="wavefront-dot" style="background:#cc00ff;"></div>
+      <span class="wavefront-name">Pseudo (&phi;<sup>&minus;2</sup>c)</span>
+      <span class="wavefront-r" id="wf-4">0.00</span>
+    </div>
+    <div class="hint" style="margin-top:8px;">
+      Speed = &radic;(Grace eigenvalue)<br>
+      &gamma; = &phi;<sup>&minus;2</sup> &asymp; 0.382 (spectral gap)
+    </div>
+  </div>
+
+  <div class="panel" id="vantage" style="bottom:20px;left:20px;top:auto;min-width:300px;max-width:360px;">
+    <h1>Vantage Points</h1>
+    <select id="preset-select" style="width:100%;padding:9px 10px;margin-top:4px;background:rgba(0,0,0,0.5);border:1px solid rgba(120,214,255,0.2);color:#e0e8ff;border-radius:6px;font-family:inherit;font-size:11px;cursor:pointer;">
+      <option value="">— jump to event —</option>
+    </select>
+    <p class="desc" id="preset-desc" style="margin-top:10px;min-height:48px;font-size:10px;color:rgba(180,200,255,0.6);line-height:1.6;"></p>
+    <div class="hint" style="margin-top:8px;">
+      Quick jump: <kbd>1..9</kbd>, <kbd>Shift+1..0</kbd>
+    </div>
+  </div>
+
+  <div class="panel" id="timeline">
+    <div class="time-display">
+      <span id="time-value">0.000</span><span class="unit">&tau;</span>
+    </div>
+    <input type="range" id="time-slider" min="0" max="100" step="0.1" value="0">
+    <div class="controls-row">
+      <button id="btn-reset">Reset</button>
+      <button id="btn-playpause" class="active">Playing</button>
+      <button id="btn-slower">&minus; Slower</button>
+      <button id="btn-faster">+ Faster</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <span class="label">Evolution rate</span>
+      <span class="value" id="val-speed">1.0&times;</span>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
