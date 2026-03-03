@@ -226,7 +226,7 @@ FieldResult genesisField(vec3 p, float t) {
     float a3 = gradeActivation(r, t, SPEED_3, GRACE_3);
     float a4 = gradeActivation(r, t, SPEED_4, GRACE_4);
 
-    float earlyBoost = max(1.0, 20.0 * exp(-t * 0.2));
+    float earlyBoost = max(1.0, 12.0 * exp(-t * 0.25));
     a0 *= earlyBoost; a1 *= earlyBoost; a2 *= earlyBoost; a3 *= earlyBoost; a4 *= earlyBoost;
 
     float s0 = scalarPattern(local_p, t);
@@ -292,19 +292,14 @@ float genesisSDF(vec3 p, float t) {
 // ═══════════════════════════════════════════════════════════════════════
 
 vec3 gradeColor(float gw[5]) {
-  // Deep, saturated colors
-  const vec3 COL_0 = vec3(1.0, 0.05, 0.05);   // Scalar: pure red
-  const vec3 COL_1 = vec3(1.0, 0.60, 0.00);   // Vector: bright orange
-  const vec3 COL_2 = vec3(0.0, 1.00, 0.10);   // Bivector: pure green
-  const vec3 COL_3 = vec3(0.0, 0.50, 1.00);   // Trivector: deep blue
-  const vec3 COL_4 = vec3(0.8, 0.00, 1.00);   // Pseudoscalar: deep purple
+  const vec3 COL_0 = vec3(1.0, 0.15, 0.08);   // Scalar: warm coral
+  const vec3 COL_1 = vec3(1.0, 0.65, 0.05);   // Vector: bright amber
+  const vec3 COL_2 = vec3(0.05, 0.90, 0.30);  // Bivector: emerald green
+  const vec3 COL_3 = vec3(0.10, 0.45, 1.00);  // Trivector: sapphire blue
+  const vec3 COL_4 = vec3(0.65, 0.05, 0.95);  // Pseudoscalar: violet
 
-  // Instead of normalizing by sum which washes out the colors, 
-  // we normalize by the max weight, keeping the dominant color pure.
   float maxW = max(max(max(max(gw[0], gw[1]), gw[2]), gw[3]), gw[4]) + 0.0001;
-  
-  // Power curve makes the dominant grade pop more
-  float p = 2.0;
+  float p = 2.5;
   float w0 = pow(gw[0]/maxW, p);
   float w1 = pow(gw[1]/maxW, p);
   float w2 = pow(gw[2]/maxW, p);
@@ -313,8 +308,8 @@ vec3 gradeColor(float gw[5]) {
 
   float total = w0 + w1 + w2 + w3 + w4 + 0.0001;
   vec3 col = (w0 * COL_0 + w1 * COL_1 + w2 * COL_2 + w3 * COL_3 + w4 * COL_4) / total;
-
-  return col; // Removed the pow(..., 0.85) which was washing out the darks
+  col = pow(col, vec3(0.92));
+  return col;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -435,11 +430,9 @@ void main() {
     float marchStep = max(d * 0.7, SURF_DIST * 2.0);
     marchStep = min(marchStep, 0.5);
 
-    // Glow accumulation: NO distance scaling. Just a flat small contribution per step.
-    // The natural path length through the wavefront shell provides the integration.
-    accumulatedGlow += wavefrontGlow(p, uTime) * marchStep * 0.15;
-    accumulatedGlow += seedGlow(p, uTime) * marchStep * 0.08;
-    accumulatedGlow += shellClosureGlow(p, uTime) * marchStep * 0.3;
+    accumulatedGlow += wavefrontGlow(p, uTime) * marchStep * 0.12;
+    accumulatedGlow += seedGlow(p, uTime) * marchStep * 0.06;
+    accumulatedGlow += shellClosureGlow(p, uTime) * marchStep * 0.22;
 
     totalDist += marchStep;
 
@@ -461,47 +454,48 @@ void main() {
 
     baseColor = gradeColor(hitField.gradeWeights);
 
-    // ── Fermion-to-boson composite detection (T17) ──────────────────────────
-    // When grade 0 (scalar, fermionic P²=-P) AND grade 2 (bivector, fermionic)
-    // are both strongly active at the same point, their tensor product is bosonic:
-    // (P⊗P)² = +4(P⊗P). This is the algebraic basis of spin-statistics.
-    // Visually: the collision region emits warm gold — the bosonic composite.
     float f0 = hitField.gradeWeights[0];
     float f2 = hitField.gradeWeights[2];
     float bosonStrength = smoothstep(0.05, 0.25, min(f0, f2) * 4.0);
-    vec3 bosonColor = vec3(1.0, 0.92, 0.55); // warm gold = bosonic composite
+    vec3 bosonColor = vec3(1.0, 0.92, 0.55);
 
-    vec3 lightDir = normalize(vec3(0.5, 0.8, 1.0));
-    float diff = max(0.05, dot(n, lightDir));
-    float spec = pow(max(0.0, dot(reflect(-lightDir, n), normalize(uCamPos - hitPos))), 32.0) * 0.5;
-    float fresnel = pow(1.0 - max(0.0, dot(n, normalize(uCamPos - hitPos))), 3.0);
+    vec3 viewDir = normalize(uCamPos - hitPos);
 
-    color = baseColor * diff * 2.5;
-    color += vec3(1.0) * spec;
-    color += baseColor * fresnel * 1.2;
-    color += baseColor * 0.05; // tiny ambient
+    vec3 keyDir  = normalize(vec3(0.5, 0.8, 1.0));
+    vec3 fillDir = normalize(vec3(-0.4, -0.3, 0.6));
+    float keyDiff  = max(0.0, dot(n, keyDir));
+    float fillDiff = max(0.0, dot(n, fillDir)) * 0.35;
+    float diff = max(0.06, keyDiff + fillDiff);
 
-    // Apply boson composite emission on top of the lit surface
-    color = mix(color, bosonColor * diff * 3.0, bosonStrength * 0.55);
+    float spec = pow(max(0.0, dot(reflect(-keyDir, n), viewDir)), 40.0) * 0.55;
+    float fresnel = pow(1.0 - max(0.0, dot(n, viewDir)), 3.5);
+
+    float ao = clamp(hitField.dist * 8.0 + 0.7, 0.3, 1.0);
+
+    color = baseColor * diff * 2.2 * ao;
+    color += vec3(0.95, 0.97, 1.0) * spec;
+    color += baseColor * fresnel * 1.0;
+    color += baseColor * 0.06;
+
+    color = mix(color, bosonColor * diff * 2.8, bosonStrength * 0.55);
   }
 
   // Deep space background
   vec3 bg = vec3(0.005, 0.005, 0.015);
 
+  float glowLuma = dot(accumulatedGlow, vec3(0.2126, 0.7152, 0.0722));
+  vec3 glowClamped = accumulatedGlow / (1.0 + glowLuma * 0.5);
+
   if (!hit) {
-    color = bg + accumulatedGlow;
+    color = bg + glowClamped;
   } else {
-    // Geometry gets its shaded color. Glow adds a subtle halo on top.
-    color += accumulatedGlow * 0.2;
+    color += glowClamped * 0.15;
     color = mix(color, bg, smoothstep(uMaxDist * 0.6, uMaxDist, totalDist));
   }
 
-  // ACES filmic tone mapping
   color = max(color, 0.0);
   color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
   color = clamp(color, 0.0, 1.0);
-
-  // sRGB gamma
   color = pow(color, vec3(1.0 / 2.2));
 
   fragColor = vec4(color, 1.0);
