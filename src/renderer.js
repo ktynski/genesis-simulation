@@ -12,6 +12,8 @@ export class GenesisRenderer {
     this.isRunning = false;
     this.speed = 0.25; // Slowed down so the evolution is clearly visible
     this.maxDist = 120.0;
+    this.systemMode = 0;
+    this.particleDist = 12.0;
 
     this._onTimeUpdate = null;
     this._onGradeUpdate = null;
@@ -32,6 +34,8 @@ export class GenesisRenderer {
       uMaxDist:  gl.getUniformLocation(this.program, 'uMaxDist'),
       uInvView:  gl.getUniformLocation(this.program, 'uInvView'),
       uInvProj:  gl.getUniformLocation(this.program, 'uInvProj'),
+      uSystemMode: gl.getUniformLocation(this.program, 'uSystemMode'),
+      uParticleDist: gl.getUniformLocation(this.program, 'uParticleDist'),
     };
     const aPos = gl.getAttribLocation(this.program, 'aPosition');
 
@@ -95,6 +99,8 @@ export class GenesisRenderer {
     gl.uniform3fv(this.uniforms.uCamPos, this.camera.position);
     gl.uniform1f(this.uniforms.uTime, this.time);
     gl.uniform1f(this.uniforms.uMaxDist, this.maxDist);
+    gl.uniform1i(this.uniforms.uSystemMode, this.systemMode);
+    gl.uniform1f(this.uniforms.uParticleDist, this.particleDist);
     gl.uniformMatrix4fv(this.uniforms.uInvView, false, this.camera.inverseViewMatrix);
     gl.uniformMatrix4fv(this.uniforms.uInvProj, false, this.camera.inverseProjectionMatrix);
 

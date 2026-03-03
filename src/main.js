@@ -10,6 +10,16 @@ const SPEEDS = [1.0, Math.pow(PHI_INV, 0.5), PHI_INV, Math.pow(PHI_INV, 1.5), PH
 // best position to observe that algebraic event.
 const GENESIS_PRESETS = [
   {
+    id: 'binary',
+    name: 'Binary Interaction  τ≈15',
+    category: 'Multi-System',
+    hotkey: '-',
+    tau: 15.0,
+    mode: 1,
+    camera: { theta: Math.PI / 2, phi: Math.PI / 2.5, distance: 35, fov: 60 },
+    desc: 'Two N²=0 sparks with opposite spins. At the exact midplane, fermions destructively interfere (Pauli repulsion). Where scalar and bivector fields constructively overlap, boson bonding bridges form.'
+  },
+  {
     id: 'spark',
     name: 'The Nilpotent Spark  τ=0',
     category: 'Core Evolution',
@@ -217,6 +227,9 @@ function wireUI() {
     const wasRunning = renderer.isRunning;
     renderer.stop();
     renderer.setTime(p.tau);
+    if(p.mode !== undefined) { renderer.systemMode = p.mode; } else { renderer.systemMode = 0; }
+    const btnMode = document.getElementById('btn-mode');
+    if(btnMode) btnMode.textContent = renderer.systemMode === 1 ? 'Mode: Binary' : 'Mode: Single';
     renderer.camera.goToPreset(p.camera, 900);
 
     // Show description
@@ -340,6 +353,14 @@ function wireUI() {
     });
   }
 
+    const btnMode = document.getElementById('btn-mode');
+  if (btnMode) {
+    btnMode.addEventListener('click', () => {
+      renderer.systemMode = renderer.systemMode === 0 ? 1 : 0;
+      btnMode.textContent = renderer.systemMode === 1 ? 'Mode: Binary' : 'Mode: Single';
+      if (!renderer.isRunning) renderer.render();
+    });
+  }
   if (btnReset) {
     btnReset.addEventListener('click', () => {
       renderer.reset();
