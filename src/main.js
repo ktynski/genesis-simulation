@@ -192,6 +192,87 @@ const GENESIS_PRESETS = [
   }
 ];
 
+// ── Magic Number Reveal ──────────────────────────────────────────────────
+// Nuclear magic numbers {2,8,20,28,50,82,126} emerge from L·S coupling
+// once SO(3) stabilizes (boosts cancel). Each shell closure maps to a τ
+// threshold from the vantage presets. The numbers appear on-screen as
+// golden glowing numerals — like constellations projected onto the cosmos.
+
+const MAGIC_SHELL_THRESHOLDS = [
+  { idx: 0, tau: 5.5  },   // n=2   (1s)
+  { idx: 1, tau: 7.0  },   // n=8   (1p)
+  { idx: 2, tau: 9.0  },   // n=20  (1d2s)
+  { idx: 3, tau: 11.0 },   // n=28  (1f7/2)
+  { idx: 4, tau: 13.0 },   // n=50  (2p1g)
+  { idx: 5, tau: 15.0 },   // n=82  (2d1h)
+  { idx: 6, tau: 18.0 },   // n=126 (3p2f1i)
+];
+
+const SO3_STABILIZE_TAU = 3.5;
+const EQUATION_TAU      = 19.5;
+
+let magicOverlayVisible = false;
+let magicRevealed = new Array(7).fill(false);
+let magicEqVisible = false;
+
+function updateMagicNumbers(tau) {
+  const overlay = document.getElementById('magic-overlay');
+  if (!overlay) return;
+
+  if (tau < SO3_STABILIZE_TAU * 0.5) {
+    if (magicOverlayVisible) {
+      overlay.classList.remove('visible', 'shells-visible');
+      for (let i = 0; i < 7; i++) {
+        const el = document.getElementById('magic-' + i);
+        if (el) el.classList.remove('revealed');
+        magicRevealed[i] = false;
+      }
+      const eq = document.getElementById('magic-equation');
+      const br = document.getElementById('magic-bridge');
+      if (eq) eq.classList.remove('visible');
+      if (br) br.classList.remove('visible');
+      magicOverlayVisible = false;
+      magicEqVisible = false;
+    }
+    return;
+  }
+
+  if (tau >= SO3_STABILIZE_TAU && !magicOverlayVisible) {
+    overlay.classList.add('visible');
+    magicOverlayVisible = true;
+  }
+
+  for (const shell of MAGIC_SHELL_THRESHOLDS) {
+    if (tau >= shell.tau && !magicRevealed[shell.idx]) {
+      const el = document.getElementById('magic-' + shell.idx);
+      if (el) el.classList.add('revealed');
+      magicRevealed[shell.idx] = true;
+    }
+    if (tau < shell.tau && magicRevealed[shell.idx]) {
+      const el = document.getElementById('magic-' + shell.idx);
+      if (el) el.classList.remove('revealed');
+      magicRevealed[shell.idx] = false;
+    }
+  }
+
+  if (tau >= EQUATION_TAU && !magicEqVisible) {
+    const eq = document.getElementById('magic-equation');
+    const br = document.getElementById('magic-bridge');
+    if (eq) eq.classList.add('visible');
+    if (br) br.classList.add('visible');
+    overlay.classList.add('shells-visible');
+    magicEqVisible = true;
+  }
+  if (tau < EQUATION_TAU && magicEqVisible) {
+    const eq = document.getElementById('magic-equation');
+    const br = document.getElementById('magic-bridge');
+    if (eq) eq.classList.remove('visible');
+    if (br) br.classList.remove('visible');
+    overlay.classList.remove('shells-visible');
+    magicEqVisible = false;
+  }
+}
+
 let renderer = null;
 
 async function init() {
@@ -289,6 +370,8 @@ function wireUI() {
       timeSlider.max = Math.max(100, t + 20);
     }
     if (timeValue) timeValue.textContent = t.toFixed(3);
+
+    updateMagicNumbers(t);
 
     // Update wavefront radii
     for (let k = 0; k < 5; k++) {

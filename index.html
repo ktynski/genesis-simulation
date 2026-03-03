@@ -156,6 +156,121 @@
       color: #78d6ff;
       font-size: 10px;
     }
+
+    /* ── Magic Numbers Overlay ──────────────────────────────────────── */
+
+    #magic-overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 1.5s ease;
+    }
+    #magic-overlay.visible { opacity: 1; }
+
+    #magic-title {
+      font-family: 'SF Mono', ui-monospace, monospace;
+      font-size: 13px;
+      letter-spacing: 0.4em;
+      text-transform: uppercase;
+      color: #ffd86a;
+      text-shadow: 0 0 16px rgba(255,216,106,.6), 0 0 50px rgba(255,216,106,.18);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all .9s ease;
+    }
+    #magic-overlay.visible #magic-title {
+      opacity: .92;
+      transform: translateY(0);
+    }
+
+    #magic-subtitle {
+      font-family: 'SF Mono', ui-monospace, monospace;
+      font-size: 10px;
+      color: rgba(180,200,255,0.5);
+      letter-spacing: .16em;
+      margin-top: 8px;
+      opacity: 0;
+      transition: opacity 1s ease .4s;
+    }
+    #magic-overlay.visible #magic-subtitle { opacity: .6; }
+
+    #magic-numbers {
+      display: flex;
+      gap: 18px;
+      margin-top: 28px;
+      align-items: flex-start;
+    }
+
+    .magic-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      min-width: 44px;
+    }
+
+    .magic-num {
+      font-family: 'SF Mono', ui-monospace, monospace;
+      font-size: 36px;
+      font-weight: 700;
+      color: #ffd86a;
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 0 10px rgba(255,216,106,.8), 0 0 30px rgba(255,216,106,.4), 0 0 70px rgba(255,216,106,.12);
+      opacity: 0;
+      transform: scale(.3) translateY(16px);
+      transition: all .7s cubic-bezier(.34,1.56,.64,1);
+    }
+    .magic-num.revealed {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+      animation: magic-pulse 3.5s ease-in-out infinite;
+    }
+
+    @keyframes magic-pulse {
+      0%, 100% { text-shadow: 0 0 10px rgba(255,216,106,.8), 0 0 30px rgba(255,216,106,.4), 0 0 70px rgba(255,216,106,.12); }
+      50%      { text-shadow: 0 0 18px rgba(255,216,106,1),  0 0 45px rgba(255,216,106,.55), 0 0 90px rgba(255,216,106,.2); }
+    }
+
+    .shell-label {
+      font-family: 'SF Mono', ui-monospace, monospace;
+      font-size: 9px;
+      color: rgba(180,200,255,0.4);
+      letter-spacing: .06em;
+      opacity: 0;
+      transition: opacity .8s ease;
+      text-align: center;
+    }
+    #magic-overlay.shells-visible .shell-label { opacity: .55; }
+
+    #magic-equation {
+      font-family: 'SF Mono', ui-monospace, monospace;
+      margin-top: 24px;
+      font-size: 12px;
+      color: #e0e8ff;
+      letter-spacing: .07em;
+      opacity: 0;
+      transition: opacity 1s ease;
+      text-shadow: 0 0 12px rgba(255,216,106,.3), 0 0 40px rgba(255,216,106,.1);
+    }
+    #magic-equation.visible { opacity: .8; }
+
+    #magic-bridge {
+      font-family: 'SF Mono', ui-monospace, monospace;
+      margin-top: 10px;
+      font-size: 9px;
+      color: rgba(180,200,255,0.5);
+      letter-spacing: .05em;
+      opacity: 0;
+      transition: opacity 1s ease .3s;
+    }
+    #magic-bridge.visible { opacity: .5; }
   </style>
 </head>
 <body>
@@ -253,6 +368,23 @@
       <span class="label">Evolution rate</span>
       <span class="value" id="val-speed">1.0&times;</span>
     </div>
+  </div>
+
+  <!-- ── Magic Numbers Overlay ──────────────────────────────────────── -->
+  <div id="magic-overlay">
+    <div id="magic-title">NUCLEAR SHELL CLOSURE</div>
+    <div id="magic-subtitle">SO(3) stabilized — Lorentz boosts cancelled</div>
+    <div id="magic-numbers">
+      <div class="magic-col"><div class="magic-num" id="magic-0">2</div><div class="shell-label">1s</div></div>
+      <div class="magic-col"><div class="magic-num" id="magic-1">8</div><div class="shell-label">1p</div></div>
+      <div class="magic-col"><div class="magic-num" id="magic-2">20</div><div class="shell-label">1d2s</div></div>
+      <div class="magic-col"><div class="magic-num" id="magic-3">28</div><div class="shell-label">1f<sub>7/2</sub></div></div>
+      <div class="magic-col"><div class="magic-num" id="magic-4">50</div><div class="shell-label">2p1g</div></div>
+      <div class="magic-col"><div class="magic-num" id="magic-5">82</div><div class="shell-label">2d1h</div></div>
+      <div class="magic-col"><div class="magic-num" id="magic-6">126</div><div class="shell-label">3p2f1i</div></div>
+    </div>
+    <div id="magic-equation">QSNV + V<sub>w</sub>  →  L·S  →  shell closures</div>
+    <div id="magic-bridge">V<sub>w</sub> cancels boost contamination: L<sub>k</sub> = ½(c<sub>i</sub>∧c<sub>j</sub> − c<sub>i</sub>∧w<sub>j</sub> − w<sub>i</sub>∧c<sub>j</sub> + w<sub>i</sub>∧w<sub>j</sub>)</div>
   </div>
 
   <script type="module" src="./src/main.js"></script>

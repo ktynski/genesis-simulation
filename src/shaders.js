@@ -25,251 +25,316 @@ in vec3 vRayDir;
 out vec4 fragColor;
 
 uniform vec3  uCamPos;
-uniform float uTime;       // evolution time τ
+uniform float uTime;
 uniform float uMaxDist;
 uniform int uSystemMode;
 uniform float uParticleDist;
 
-
 // ═══════════════════════════════════════════════════════════════════════
-// CONSTANTS — derived from Cl(3,1) and the golden ratio
+// CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════
 
 const float PHI     = 1.618033988749;
 const float PHI_INV = 0.618033988749;
 const float PI      = 3.141592653589793;
 
-// Grade propagation speeds: c_k = φ^(-k/2)
-// Derived from Grace eigenvalues λ_k = φ^(-k), wave speed = √λ_k
-const float SPEED_0 = 1.0;       // scalar:       c
-const float SPEED_1 = 0.78615;   // vector:       φ^(-1/2)  ≈ 0.786
-const float SPEED_2 = 0.61803;   // bivector:     φ^(-1)    ≈ 0.618
-const float SPEED_3 = 0.48587;   // trivector:    φ^(-3/2)  ≈ 0.486
-const float SPEED_4 = 0.38197;   // pseudoscalar: φ^(-2)    ≈ 0.382
+const float SPEED_0 = 1.0;
+const float SPEED_1 = 0.78615;
+const float SPEED_2 = 0.61803;
+const float SPEED_3 = 0.48587;
+const float SPEED_4 = 0.38197;
 
-// Grace damping weights: φ^(-k)
 const float GRACE_0 = 1.0;
 const float GRACE_1 = 0.61803;
 const float GRACE_2 = 0.38197;
 const float GRACE_3 = 0.23607;
 const float GRACE_4 = 0.14590;
 
-// Tripotent seed: P = w₁w₂ = -1 + e₁₂ - e₁₃ + e₂₃
-// Scalar component = -1, bivector components = (1, -1, 1)
-const float SEED_SCALAR = -1.0;
-const vec3  SEED_BIVEC  = vec3(1.0, -1.0, 1.0);  // e₁₂, e₁₃, e₂₃
-
 #define MAX_STEPS 160
 #define SURF_DIST 0.001
 #define NORMAL_EPS 0.003
 
 // ═══════════════════════════════════════════════════════════════════════
-// GRADE ACTIVATION — continuous, no discrete phases
+// Cl(3,1) MULTIPLICATION TABLE
 //
-// Each grade activates behind its own wavefront. The activation is a
-// smooth function of (r, t) — no step functions, no switches.
+// Basis ordering (grade-sorted, lexicographic within grade):
+//   [0]  1       [1] e0   [2] e1   [3] e2   [4] e3
+//   [5]  e01     [6] e02  [7] e03  [8] e12  [9] e13  [10] e23
+//   [11] e012   [12] e013 [13] e023 [14] e123
+//   [15] e0123
+//
+// Metric: e0²=+1, e1²=+1, e2²=+1, e3²=-1
+// ═══════════════════════════════════════════════════════════════════════
+
+const int MUL_IDX[256] = int[](
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,
+  1,0,5,6,7,2,3,4,11,12,13,8,9,10,15,14,
+  2,5,0,8,9,1,11,12,3,4,14,6,7,15,10,13,
+  3,6,8,0,10,11,1,13,2,14,4,5,15,7,9,12,
+  4,7,9,10,0,12,13,1,14,2,3,15,5,6,8,11,
+  5,2,1,11,12,0,8,9,6,7,15,3,4,14,13,10,
+  6,3,11,1,13,8,0,10,5,15,7,2,14,4,12,9,
+  7,4,12,13,1,9,10,0,15,5,6,14,2,3,11,8,
+  8,11,3,2,14,6,5,15,0,10,9,1,13,12,4,7,
+  9,12,4,14,2,7,15,5,10,0,8,13,1,11,3,6,
+  10,13,14,4,3,15,7,6,9,8,0,12,11,1,2,5,
+  11,8,6,5,15,3,2,14,1,13,12,0,10,9,7,4,
+  12,9,7,15,5,4,14,2,13,1,11,10,0,8,6,3,
+  13,10,15,7,6,14,4,3,12,11,1,9,8,0,5,2,
+  14,15,10,9,8,13,12,11,4,3,2,7,6,5,0,1,
+  15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
+);
+
+const int MUL_SIGN[256] = int[](
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   1,-1, 1, 1, 1,-1,-1,-1, 1, 1, 1,-1,-1,-1, 1,-1,
+   1,-1,-1, 1, 1, 1,-1,-1,-1,-1, 1, 1, 1,-1,-1, 1,
+   1,-1,-1,-1,-1, 1, 1, 1, 1, 1, 1,-1,-1,-1,-1, 1,
+   1,-1, 1, 1, 1,-1,-1,-1, 1, 1, 1,-1,-1,-1, 1,-1,
+   1,-1,-1, 1, 1, 1,-1,-1,-1,-1, 1, 1, 1,-1,-1, 1,
+   1,-1,-1,-1,-1, 1, 1, 1, 1, 1, 1,-1,-1,-1,-1, 1,
+   1, 1,-1, 1, 1,-1, 1, 1,-1,-1, 1,-1,-1, 1,-1,-1,
+   1, 1,-1,-1,-1,-1,-1,-1, 1, 1, 1, 1, 1, 1,-1,-1,
+   1, 1, 1,-1,-1, 1,-1,-1,-1,-1, 1,-1,-1, 1, 1, 1,
+   1, 1,-1, 1, 1,-1, 1, 1,-1,-1, 1,-1,-1, 1,-1,-1,
+   1, 1,-1,-1,-1,-1,-1,-1, 1, 1, 1, 1, 1, 1,-1,-1,
+   1, 1, 1,-1,-1, 1,-1,-1,-1,-1, 1,-1,-1, 1, 1, 1,
+   1,-1, 1,-1,-1,-1, 1, 1,-1,-1, 1, 1, 1,-1, 1,-1,
+   1,-1, 1,-1,-1,-1, 1, 1,-1,-1, 1, 1, 1,-1, 1,-1
+);
+
+// Grade of each basis element
+const int GRADE[16] = int[](0, 1,1,1,1, 2,2,2,2,2,2, 3,3,3,3, 4);
+
+// ═══════════════════════════════════════════════════════════════════════
+// CLIFFORD GEOMETRIC PRODUCT — exact 16-component multiplication
+// ═══════════════════════════════════════════════════════════════════════
+
+void cliffordMul(float a[16], float b[16], out float c[16]) {
+  for (int k = 0; k < 16; k++) c[k] = 0.0;
+  for (int i = 0; i < 16; i++) {
+    float ai = a[i];
+    if (ai == 0.0) continue;
+    for (int j = 0; j < 16; j++) {
+      float bj = b[j];
+      if (bj == 0.0) continue;
+      int idx = i * 16 + j;
+      c[MUL_IDX[idx]] += float(MUL_SIGN[idx]) * ai * bj;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// GRADE ACTIVATION — unchanged from original
 // ═══════════════════════════════════════════════════════════════════════
 
 float gradeActivation(float r, float t, float speed, float graceWeight) {
   float wavefrontR = speed * t;
-
-  // How far behind the wavefront are we? Positive = inside.
   float behind = wavefrontR - r;
-
-  // Smooth activation: rises over a width proportional to the wavefront radius.
-  // This avoids artifacts and makes the transition physical (diffraction).
-  // Make the width larger so the activation happens more gradually and isn't so abrupt.
   float width = max(0.8, wavefrontR * 0.4);
-  
-  // Make the activation much stronger and more immediate when t > 0
   float activation = smoothstep(-width * 0.5, width * 0.5, behind);
-
-  // Grace damping: higher grades are weaker
   activation *= graceWeight;
-
-  // 3D spreading: amplitude decays as 1/r (energy as 1/r²)
-  // But don't decay too fast early on so we can see it
   activation /= (1.0 + r * 0.02);
-
   return activation;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// SPATIAL PATTERNS — one for each Clifford grade
+// 16-COMPONENT MULTIVECTOR FIELD
 //
-// These are NOT imposed shapes. They are the spatial dependence of each
-// grade's contribution to the field. The torus EMERGES from the bivector
-// (grade 2) pattern — bilinear products of position components create
-// saddle surfaces that interfere into toroidal topology.
+// Each basis element gets its own spatial pattern derived from the
+// original grade-level patterns but split into individual components.
+//
+// Tripotent seed: P = w1*w2 = -1 + e12 - e13 + e23
+//   => component [0] = -1, [8] = +1, [9] = -1, [10] = +1
 // ═══════════════════════════════════════════════════════════════════════
 
-float scalarPattern(vec3 p, float t) {
-  // Isotropic multi-frequency resonance: φ, φ², and 1 wavelengths
+void computeMultivector(vec3 p, float t, out float mv[16]) {
   float r = length(p);
+
+  float a0 = gradeActivation(r, t, SPEED_0, GRACE_0);
+  float a1 = gradeActivation(r, t, SPEED_1, GRACE_1);
+  float a2 = gradeActivation(r, t, SPEED_2, GRACE_2);
+  float a3 = gradeActivation(r, t, SPEED_3, GRACE_3);
+  float a4 = gradeActivation(r, t, SPEED_4, GRACE_4);
+
+  float earlyBoost = max(1.0, 20.0 * exp(-t * 0.2));
+  a0 *= earlyBoost; a1 *= earlyBoost; a2 *= earlyBoost;
+  a3 *= earlyBoost; a4 *= earlyBoost;
+
+  // [0] Scalar — reduced amplitude so other grades can compete visually
   float m1 = cos(r / PHI + t * 0.15);
   float m2 = cos(r / (PHI * PHI) + t * 0.09);
   float m3 = cos(r + t * 0.12);
-  // φ-weighted combination
-  return PHI_INV * m1 + PHI_INV * m2 * 0.5 + PHI_INV * m3 * 0.3;
-}
+  mv[0] = a0 * (PHI_INV * m1 + PHI_INV * m2 * 0.3 + PHI_INV * m3 * 0.15) * 0.6;
 
-float vectorPattern(vec3 p, float t) {
-  // Directional modes — breaks spherical symmetry
-  // Three incommensurable frequencies along three axes
-  float v1 = sin(p.x / PHI + t * 0.13) * cos(p.y + t * 0.08);
-  float v2 = sin(p.y / PHI + t * 0.11) * cos(p.z + t * 0.07);
-  float v3 = sin(p.z / PHI + t * 0.09) * cos(p.x + t * 0.06);
-  // The fourth component (timelike e₄) contributes phase
-  float v4 = cos((p.x + p.y + p.z) * PHI_INV + t * 0.17);
-  return (v1 + v2 + v3) * 0.25 + v4 * 0.15;
-}
+  // [1-4] Vectors — stronger directional modes with less cancellation
+  mv[1] = a1 * (sin(p.x / PHI + t * 0.13) * 0.5 + cos(p.y * 0.7 + t * 0.08) * 0.25);
+  mv[2] = a1 * (sin(p.y / PHI + t * 0.11) * 0.5 + cos(p.z * 0.7 + t * 0.07) * 0.25);
+  mv[3] = a1 * (sin(p.z / PHI + t * 0.09) * 0.5 + cos(p.x * 0.7 + t * 0.06) * 0.25);
+  mv[4] = a1 * cos((p.x + p.y + p.z) * PHI_INV + t * 0.17) * 0.3;
 
-float bivectorPattern(vec3 p, float t) {
-  // Bilinear products — rotation planes: e₁₂, e₁₃, e₁₄, e₂₃, e₂₄, e₃₄
-  // These are the terms that create toroidal geometry.
-  // p.x*p.y → e₁₂ plane, p.y*p.z → e₂₃ plane, etc.
+  // [5-10] Bivectors — mixed angular + radial patterns so they're nonzero everywhere
   float scale = 0.3;
+  float boostCancel = exp(-max(0.0, t - PHI * PHI) * 1.2);
+  float so3boost = 1.0 + 0.6 * (1.0 - boostCancel);
 
-  // Spatial bivectors (e₁₂, e₁₃, e₂₃) — generate SO(3) rotations
-  // These SURVIVE the boost cancellation (T8) and define 3D space
-  float b_12 = p.x * p.y * sin(length(p.xy) * scale * PHI + t * 0.07);
-  float b_13 = p.x * p.z * cos(length(p.xz) * scale + t * 0.06);
-  float b_23 = p.y * p.z * sin(length(p.yz) * scale * PHI_INV + t * 0.05);
+  // Spacetime bivectors: decay after boost cancellation
+  mv[5] = a2 * (p.x * sin(r * scale * 0.7 + t * 0.11) + cos(p.y * 0.5 + t * 0.14) * 0.3) * 0.2 * boostCancel;
+  mv[6] = a2 * (p.y * cos(r * scale * 0.7 + t * 0.10) + sin(p.z * 0.5 + t * 0.12) * 0.3) * 0.2 * boostCancel;
+  mv[7] = a2 * (p.z * sin(r * scale * 0.7 + t * 0.09) + cos(p.x * 0.5 + t * 0.13) * 0.3) * 0.2 * boostCancel;
 
-  // Spacetime bivectors (e₁₄, e₂₄, e₃₄) — generate Lorentz boosts
-  // c_k = g_k + g_3, w_k = g_k - g_3: their products have OPPOSITE timelike signs.
-  // When both V_c and V_w products are summed, the timelike parts cancel (T8).
-  // This cancellation is complete by tau = phi^2, leaving only SO(3).
-  // We model this as exponential decay: boosts present early, gone after tau=phi^2.
-  float boostCancellation = exp(-max(0.0, t - PHI * PHI) * 1.2);
-  float r = length(p);
-  float b_14 = p.x * sin(r * scale * 0.7 + t * 0.11) * 0.3 * boostCancellation;
-  float b_24 = p.y * cos(r * scale * 0.7 + t * 0.10) * 0.3 * boostCancellation;
-  float b_34 = p.z * sin(r * scale * 0.7 + t * 0.09) * 0.3 * boostCancellation;
+  // Spatial bivectors: survive, with angular pattern + isotropic floor
+  float ang12 = atan(p.y, p.x + 0.001);
+  float ang13 = atan(p.z, p.x + 0.001);
+  float ang23 = atan(p.z, p.y + 0.001);
 
-  // After boost cancellation, spatial bivectors strengthen (they inherit the energy)
-  float so3boost = 1.0 + 0.5 * (1.0 - boostCancellation);
-  
-  // Tripotent seed contributes to bivectors: e₁₂ - e₁₃ + e₂₃
-  float seed_contribution = (
-    SEED_BIVEC.x * b_12 +
-    SEED_BIVEC.y * b_13 +
-    SEED_BIVEC.z * b_23
-  ) * 0.5;
+  mv[8]  = a2 * (sin(ang12 * 2.0 + r * scale * PHI + t * 0.07) * 0.5
+              + sin(r * 0.4 + t * 0.05) * 0.2) * so3boost;
+  mv[9]  = a2 * (cos(ang13 * 2.0 + r * scale + t * 0.06) * 0.5
+              + cos(r * 0.35 + t * 0.04) * 0.2) * so3boost;
+  mv[10] = a2 * (sin(ang23 * 2.0 + r * scale * PHI_INV + t * 0.05) * 0.5
+              + sin(r * 0.45 + t * 0.06) * 0.2) * so3boost;
 
-  return (b_12 + b_13 + b_23) * 0.35 * so3boost + (b_14 + b_24 + b_34) * 0.15 + seed_contribution * 0.2;
-}
+  // Tripotent seed: P = -1 + e12 - e13 + e23
+  float seedWeight = 0.25 / (1.0 + r * 0.12);
+  mv[0]  += a0 * (-1.0) * seedWeight;
+  mv[8]  += a2 * ( 1.0) * seedWeight;
+  mv[9]  += a2 * (-1.0) * seedWeight;
+  mv[10] += a2 * ( 1.0) * seedWeight;
 
-float trivectorPattern(vec3 p, float t) {
-  // Triple products — volumes: e₁₂₃, e₁₂₄, e₁₃₄, e₂₃₄
-  float r = length(p);
-  float t123 = p.x * p.y * p.z * cos(r * 0.2 * PHI + t * 0.04);
-  float t124 = p.x * p.y * sin(r * 0.15 + t * 0.05) * 0.5;
-  float t134 = p.x * p.z * cos(r * 0.15 * PHI_INV + t * 0.03) * 0.5;
-  float t234 = p.y * p.z * sin(r * 0.15 * PHI + t * 0.06) * 0.5;
-  return (t123 * 0.4 + t124 + t134 + t234) * 0.15;
-}
+  // [11-14] Trivectors — angular patterns so they're visible off-axis
+  float phi_ang = atan(p.y, p.x + 0.001);
+  float theta_ang = acos(clamp(p.z / max(r, 0.01), -1.0, 1.0));
 
-float pseudoscalarPattern(vec3 p, float t) {
-  // Volume element e₁₂₃₄ — chirality/orientation
-  float r = length(p);
-  float vol = sin(p.x * p.y * p.z * 0.3 + t * 0.03);
-  float orient = cos(r * PHI_INV * 0.5 + t * 0.02);
-  return vol * orient * 0.3;
+  mv[11] = a3 * sin(phi_ang * 3.0 + r * 0.2 * PHI + t * 0.04) * 0.2;
+  mv[12] = a3 * cos(theta_ang * 2.0 + r * 0.18 + t * 0.05) * 0.18;
+  mv[13] = a3 * sin(phi_ang * 2.0 + theta_ang + r * 0.15 * PHI_INV + t * 0.03) * 0.18;
+  mv[14] = a3 * cos(phi_ang + theta_ang * 3.0 + r * 0.15 * PHI + t * 0.06) * 0.15;
+
+  // [15] Pseudoscalar — isotropic chirality
+  mv[15] = a4 * sin(r * PHI_INV * 0.5 + t * 0.03) * cos(phi_ang * 0.5 + t * 0.02) * 0.4;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// GENESIS SDF — the complete evolution from nothing
-//
-// One function. Evaluated at (position, time).
-// The temporal structure is a CONSEQUENCE of the φ-scaled speeds.
+// EXTRACT GRADE WEIGHTS from a 16-component multivector
+// ═══════════════════════════════════════════════════════════════════════
+
+void gradeWeightsFromMV(float mv[16], out float gw[5]) {
+  gw[0] = abs(mv[0]);
+  gw[1] = abs(mv[1]) + abs(mv[2]) + abs(mv[3]) + abs(mv[4]);
+  gw[2] = abs(mv[5]) + abs(mv[6]) + abs(mv[7]) + abs(mv[8]) + abs(mv[9]) + abs(mv[10]);
+  gw[3] = abs(mv[11]) + abs(mv[12]) + abs(mv[13]) + abs(mv[14]);
+  gw[4] = abs(mv[15]);
+}
+
+float mvNorm(float mv[16]) {
+  float s = 0.0;
+  for (int i = 0; i < 16; i++) s += mv[i] * mv[i];
+  return sqrt(s);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// GENESIS SDF — full 16-component Clifford field
 // ═══════════════════════════════════════════════════════════════════════
 
 struct FieldResult {
   float dist;
-  float gradeWeights[5]; // for coloring
+  float gradeWeights[5];
   float totalEnergy;
+  float scalarProduct;
 };
 
 FieldResult genesisField(vec3 p, float t) {
   FieldResult res;
   for (int i = 0; i < 5; i++) res.gradeWeights[i] = 0.0;
   res.totalEnergy = 0.0;
+  res.scalarProduct = 0.0;
 
   if (t <= 0.0) {
     res.dist = 100.0;
     return res;
   }
 
-  int num_p = (uSystemMode == 1) ? 2 : 1;
-  float c0 = 0.0, c1 = 0.0, c2 = 0.0, c3 = 0.0, c4 = 0.0;
-  float origin_repulsion = 0.0;
   float min_r = 10000.0;
+  float origin_repulsion = 0.0;
 
-  for (int i = 0; i < 2; i++) {
-    if (i >= num_p) break;
-    
-    vec3 center = vec3(0.0);
-    float pSign = 1.0;
-    if (uSystemMode == 1) {
-      center = vec3((float(i) - 0.5) * uParticleDist, 0.0, 0.0);
-      pSign = (i == 0) ? 1.0 : -1.0;
+  // Compute multivector for system A (always present)
+  vec3 centerA = vec3(0.0);
+  if (uSystemMode == 1) centerA = vec3(-0.5 * uParticleDist, 0.0, 0.0);
+  vec3 localA = p - centerA;
+  float rA = length(localA);
+  min_r = min(min_r, rA);
+  origin_repulsion += exp(-rA*rA * 2.0) * max(0.0, 1.0 - t * 0.2);
+
+  float mvA[16];
+  computeMultivector(localA, t, mvA);
+
+  float total[16];
+
+  if (uSystemMode == 1) {
+    // Binary mode: compute system B and take geometric product
+    vec3 centerB = vec3(0.5 * uParticleDist, 0.0, 0.0);
+    vec3 localB = p - centerB;
+    float rB = length(localB);
+    min_r = min(min_r, rB);
+    origin_repulsion += exp(-rB*rB * 2.0) * max(0.0, 1.0 - t * 0.2);
+
+    float mvB[16];
+    computeMultivector(localB, t, mvB);
+
+    // Flip the sign of mvB (opposite tripotent / opposite spin)
+    for (int i = 0; i < 16; i++) mvB[i] = -mvB[i];
+
+    // Psi_total = Psi_A + Psi_B + beta * (Psi_A * Psi_B)
+    // The geometric product creates new grade components that neither
+    // field had individually (e.g. vector * vector => scalar + bivector).
+    float product[16];
+    cliffordMul(mvA, mvB, product);
+
+    float beta = 0.5;
+    for (int i = 0; i < 16; i++) {
+      total[i] = mvA[i] + mvB[i] + beta * product[i];
     }
-    
-    vec3 local_p = p - center;
-    float r = length(local_p);
-    min_r = min(min_r, r);
-    
-    float a0 = gradeActivation(r, t, SPEED_0, GRACE_0);
-    float a1 = gradeActivation(r, t, SPEED_1, GRACE_1);
-    float a2 = gradeActivation(r, t, SPEED_2, GRACE_2);
-    float a3 = gradeActivation(r, t, SPEED_3, GRACE_3);
-    float a4 = gradeActivation(r, t, SPEED_4, GRACE_4);
 
-    float earlyBoost = max(1.0, 20.0 * exp(-t * 0.2));
-    a0 *= earlyBoost; a1 *= earlyBoost; a2 *= earlyBoost; a3 *= earlyBoost; a4 *= earlyBoost;
-
-    float s0 = scalarPattern(local_p, t);
-    float s1 = vectorPattern(local_p, t);
-    float s2 = bivectorPattern(local_p, t);
-    float s3 = trivectorPattern(local_p, t);
-    float s4 = pseudoscalarPattern(local_p, t);
-
-    c0 += a0 * s0 * pSign;
-    c1 += a1 * s1 * pSign;
-    c2 += a2 * s2 * pSign;
-    c3 += a3 * s3 * pSign;
-    c4 += a4 * s4 * pSign;
-    
-    origin_repulsion += exp(-r*r * 2.0) * max(0.0, 1.0 - t * 0.2);
+    // The scalar part of the geometric product reveals boson/fermion character
+    res.scalarProduct = product[0];
+  } else {
+    // Single mode: just the one system
+    for (int i = 0; i < 16; i++) total[i] = mvA[i];
   }
 
-  res.gradeWeights[0] = abs(c0);
-  res.gradeWeights[1] = abs(c1);
-  res.gradeWeights[2] = abs(c2);
-  res.gradeWeights[3] = abs(c3);
-  res.gradeWeights[4] = abs(c4);
+  // Extract grade weights for coloring
+  gradeWeightsFromMV(total, res.gradeWeights);
 
-  float field = c0 + c1 + c2 + c3 + c4;
+  // Total field: grade-weighted signed density
+  // Each grade contributes its signed sum (preserving interference patterns)
+  // but weighted by Grace coefficients so the grade hierarchy is visible.
+  float g0_field = total[0];
+  float g1_field = total[1] + total[2] + total[3] + total[4];
+  float g2_field = total[5] + total[6] + total[7] + total[8] + total[9] + total[10];
+  float g3_field = total[11] + total[12] + total[13] + total[14];
+  float g4_field = total[15];
 
-  float coupling_01 = c0 * c1 * 0.4;
-  float coupling_11 = c1 * c1 * 0.3;
-  float coupling_12 = c1 * c2 * 0.35;
-  float coupling_02 = c0 * c2 * 0.25;
-  float coupling_23 = c2 * c3 * 0.2;
-  field += (coupling_01 + coupling_11 + coupling_12 + coupling_02 + coupling_23);
+  float field = g0_field + g1_field * 1.2 + g2_field * 1.5 + g3_field * 1.8 + g4_field * 1.0;
 
+  // Tripotent modulation: P^2 = -P creates sign-alternating pulsation
   float tripotent_mod = 1.0 + 0.15 * cos(t * PI / PHI);
   tripotent_mod = mix(1.0, tripotent_mod, 1.0 / (1.0 + min_r * 0.1));
   field *= tripotent_mod;
 
-  field += (abs(c0) + PHI_INV * abs(c4)) * PHI_INV * 0.08;
-  res.totalEnergy = abs(c0) + abs(c1) + abs(c2) + abs(c3) + abs(c4);
+  // Grace contraction: bias toward scalar + pseudoscalar
+  float grace_core = abs(total[0]) + PHI_INV * abs(total[15]);
+  field += grace_core * PHI_INV * 0.08;
+
+  // Total energy
+  res.totalEnergy = 0.0;
+  for (int i = 0; i < 5; i++) res.totalEnergy += res.gradeWeights[i];
 
   if (res.totalEnergy < 0.001 && origin_repulsion < 0.001) {
-     float active_edge = SPEED_0 * t + max(0.8, SPEED_0 * t * 0.4) * 0.5;
-     res.dist = max(0.2, min_r - active_edge);
-     return res;
+    float active_edge = SPEED_0 * t + max(0.8, SPEED_0 * t * 0.4) * 0.5;
+    res.dist = max(0.2, min_r - active_edge);
+    return res;
   }
 
   float sdf = abs(field);
@@ -282,43 +347,34 @@ FieldResult genesisField(vec3 p, float t) {
   return res;
 }
 
-// Simple SDF wrapper for normal estimation
 float genesisSDF(vec3 p, float t) {
   return genesisField(p, t).dist;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// COLORING — grade-dominant color mixing
+// COLORING — grade-dominant color mixing (unchanged)
 // ═══════════════════════════════════════════════════════════════════════
 
 vec3 gradeColor(float gw[5]) {
-  // Deep, saturated colors
-  const vec3 COL_0 = vec3(1.0, 0.05, 0.05);   // Scalar: pure red
-  const vec3 COL_1 = vec3(1.0, 0.60, 0.00);   // Vector: bright orange
-  const vec3 COL_2 = vec3(0.0, 1.00, 0.10);   // Bivector: pure green
-  const vec3 COL_3 = vec3(0.0, 0.50, 1.00);   // Trivector: deep blue
-  const vec3 COL_4 = vec3(0.8, 0.00, 1.00);   // Pseudoscalar: deep purple
+  const vec3 COL_0 = vec3(1.0, 0.05, 0.05);
+  const vec3 COL_1 = vec3(1.0, 0.60, 0.00);
+  const vec3 COL_2 = vec3(0.0, 1.00, 0.10);
+  const vec3 COL_3 = vec3(0.0, 0.50, 1.00);
+  const vec3 COL_4 = vec3(0.8, 0.00, 1.00);
 
-  // Instead of normalizing by sum which washes out the colors, 
-  // we normalize by the max weight, keeping the dominant color pure.
   float maxW = max(max(max(max(gw[0], gw[1]), gw[2]), gw[3]), gw[4]) + 0.0001;
-  
-  // Power curve makes the dominant grade pop more
-  float p = 2.0;
-  float w0 = pow(gw[0]/maxW, p);
-  float w1 = pow(gw[1]/maxW, p);
-  float w2 = pow(gw[2]/maxW, p);
-  float w3 = pow(gw[3]/maxW, p);
-  float w4 = pow(gw[4]/maxW, p);
-
-  float total = w0 + w1 + w2 + w3 + w4 + 0.0001;
-  vec3 col = (w0 * COL_0 + w1 * COL_1 + w2 * COL_2 + w3 * COL_3 + w4 * COL_4) / total;
-
-  return col; // Removed the pow(..., 0.85) which was washing out the darks
+  float pw = 2.0;
+  float w0 = pow(gw[0]/maxW, pw);
+  float w1 = pow(gw[1]/maxW, pw);
+  float w2 = pow(gw[2]/maxW, pw);
+  float w3 = pow(gw[3]/maxW, pw);
+  float w4 = pow(gw[4]/maxW, pw);
+  float tot = w0 + w1 + w2 + w3 + w4 + 0.0001;
+  return (w0 * COL_0 + w1 * COL_1 + w2 * COL_2 + w3 * COL_3 + w4 * COL_4) / tot;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// WAVEFRONT GLOW — visible shells at the expanding wavefronts
+// WAVEFRONT GLOW
 // ═══════════════════════════════════════════════════════════════════════
 
 vec3 wavefrontGlow(vec3 p, float t) {
@@ -346,15 +402,7 @@ vec3 wavefrontGlow(vec3 p, float t) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// SHELL CLOSURE GLOW — L.S coupling produces magic number shells
-//
-// After SO(4)→SO(3) (tau = phi^2), the L_k generators mix trivector
-// eigenspaces (T15). This L.S coupling produces stable quantized shells
-// at the magic numbers {2,8,20,28,50,82,126}.
-//
-// Each shell appears as a bright quantized ring that brightens and then
-// persists as the field self-organizes. The radii scale with the cube
-// root of the magic number (3D volume → radius scaling).
+// SHELL CLOSURE GLOW — magic number shells
 // ═══════════════════════════════════════════════════════════════════════
 
 vec3 shellClosureGlow(vec3 p, float t) {
@@ -384,7 +432,7 @@ vec3 shellClosureGlow(vec3 p, float t) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// SEED GLOW — the nilpotent origin point
+// SEED GLOW — nilpotent origin point
 // ═══════════════════════════════════════════════════════════════════════
 
 vec3 seedGlow(vec3 p, float t) {
@@ -419,7 +467,6 @@ void main() {
 
   for (int i = 0; i < MAX_STEPS; i++) {
     vec3 p = ro + rd * totalDist;
-    float r = length(p);
 
     FieldResult fr = genesisField(p, uTime);
     float d = fr.dist;
@@ -431,23 +478,18 @@ void main() {
       break;
     }
 
-    // Step size: proportional to distance from surface, capped to avoid overshooting wavefronts
     float marchStep = max(d * 0.7, SURF_DIST * 2.0);
     marchStep = min(marchStep, 0.5);
 
-    // Glow accumulation: NO distance scaling. Just a flat small contribution per step.
-    // The natural path length through the wavefront shell provides the integration.
     accumulatedGlow += wavefrontGlow(p, uTime) * marchStep * 0.15;
     accumulatedGlow += seedGlow(p, uTime) * marchStep * 0.08;
     accumulatedGlow += shellClosureGlow(p, uTime) * marchStep * 0.3;
 
     totalDist += marchStep;
-
     if (totalDist > uMaxDist) break;
   }
 
   vec3 color = vec3(0.0);
-  vec3 baseColor = vec3(0.0);
 
   if (hit) {
     vec3 n = normalize(vec3(
@@ -459,17 +501,20 @@ void main() {
       genesisSDF(hitPos - vec3(0.0, 0.0, NORMAL_EPS), uTime)
     ));
 
-    baseColor = gradeColor(hitField.gradeWeights);
+    vec3 baseColor = gradeColor(hitField.gradeWeights);
 
-    // ── Fermion-to-boson composite detection (T17) ──────────────────────────
-    // When grade 0 (scalar, fermionic P²=-P) AND grade 2 (bivector, fermionic)
-    // are both strongly active at the same point, their tensor product is bosonic:
-    // (P⊗P)² = +4(P⊗P). This is the algebraic basis of spin-statistics.
-    // Visually: the collision region emits warm gold — the bosonic composite.
-    float f0 = hitField.gradeWeights[0];
-    float f2 = hitField.gradeWeights[2];
-    float bosonStrength = smoothstep(0.05, 0.25, min(f0, f2) * 4.0);
-    vec3 bosonColor = vec3(1.0, 0.92, 0.55); // warm gold = bosonic composite
+    // Boson detection: in binary mode, the scalar part of the geometric
+    // product reveals fermion-boson character. Positive scalar = bosonic
+    // composite (T17: (-1)x(-1) = +1). Negative = fermionic repulsion.
+    float bosonStrength = 0.0;
+    if (uSystemMode == 1) {
+      bosonStrength = smoothstep(0.0, 0.15, hitField.scalarProduct);
+    } else {
+      float f0 = hitField.gradeWeights[0];
+      float f2 = hitField.gradeWeights[2];
+      bosonStrength = smoothstep(0.05, 0.25, min(f0, f2) * 4.0);
+    }
+    vec3 bosonColor = vec3(1.0, 0.92, 0.55);
 
     vec3 lightDir = normalize(vec3(0.5, 0.8, 1.0));
     float diff = max(0.05, dot(n, lightDir));
@@ -479,19 +524,15 @@ void main() {
     color = baseColor * diff * 2.5;
     color += vec3(1.0) * spec;
     color += baseColor * fresnel * 1.2;
-    color += baseColor * 0.05; // tiny ambient
-
-    // Apply boson composite emission on top of the lit surface
+    color += baseColor * 0.05;
     color = mix(color, bosonColor * diff * 3.0, bosonStrength * 0.55);
   }
 
-  // Deep space background
   vec3 bg = vec3(0.005, 0.005, 0.015);
 
   if (!hit) {
     color = bg + accumulatedGlow;
   } else {
-    // Geometry gets its shaded color. Glow adds a subtle halo on top.
     color += accumulatedGlow * 0.2;
     color = mix(color, bg, smoothstep(uMaxDist * 0.6, uMaxDist, totalDist));
   }
