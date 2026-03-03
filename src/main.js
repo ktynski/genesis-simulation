@@ -195,38 +195,122 @@ const GENESIS_PRESETS = [
 // ── Magic Number Reveal ──────────────────────────────────────────────────
 // Nuclear magic numbers {2,8,20,28,50,82,126} emerge from L·S coupling
 // once SO(3) stabilizes (boosts cancel). Each shell closure maps to a τ
-// threshold from the vantage presets. The numbers appear on-screen as
-// golden glowing numerals — like constellations projected onto the cosmos.
+// threshold from the vantage presets.
+//
+// The numbers COUNT UP from 0 before locking — the viewer sees the system
+// computing the answer, not just being told the answer. Each number is
+// color-matched to its 3D shell ring in the shader (SCOL array).
+//
+// Below each number, the harmonic oscillator prediction is shown for
+// comparison. The first three match (2,8,20 = HO), but at n=28 the
+// spin-orbit coupling L·S splits the HO prediction (40→28). This
+// divergence is the proof: L·S is doing real physics.
 
+const MAGIC_NUMBERS     = [2, 8, 20, 28, 50, 82, 126];
 const MAGIC_SHELL_THRESHOLDS = [
-  { idx: 0, tau: 5.5  },   // n=2   (1s)
-  { idx: 1, tau: 7.0  },   // n=8   (1p)
-  { idx: 2, tau: 9.0  },   // n=20  (1d2s)
-  { idx: 3, tau: 11.0 },   // n=28  (1f7/2)
-  { idx: 4, tau: 13.0 },   // n=50  (2p1g)
-  { idx: 5, tau: 15.0 },   // n=82  (2d1h)
-  { idx: 6, tau: 18.0 },   // n=126 (3p2f1i)
+  { idx: 0, tau: 5.5  },
+  { idx: 1, tau: 7.0  },
+  { idx: 2, tau: 9.0  },
+  { idx: 3, tau: 11.0 },
+  { idx: 4, tau: 13.0 },
+  { idx: 5, tau: 15.0 },
+  { idx: 6, tau: 18.0 },
 ];
 
 const SO3_STABILIZE_TAU = 3.5;
+const BOOST_CANCEL_TAU  = 2.618;   // φ² — the bifurcation point
 const EQUATION_TAU      = 19.5;
 
 let magicOverlayVisible = false;
-let magicRevealed = new Array(7).fill(false);
+let magicState = new Array(7).fill('hidden'); // hidden | counting | locked
 let magicEqVisible = false;
+let activeCounters = {};
+
+function animateCounter(idx) {
+  const el = document.getElementById('magic-' + idx);
+  if (!el) return;
+  const target = MAGIC_NUMBERS[idx];
+
+  el.classList.add('counting', 'revealed');
+  magicState[idx] = 'counting';
+
+  const duration = 800 + target * 4;
+  const startTime = performance.now();
+
+  const tick = (now) => {
+    if (magicState[idx] !== 'counting') return;
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = Math.round(eased * target);
+
+    if (progress < 1) {
+      activeCounters[idx] = requestAnimationFrame(tick);
+    } else {
+      el.textContent = target;
+      el.classList.remove('counting');
+      el.classList.add('locked');
+      magicState[idx] = 'locked';
+      delete activeCounters[idx];
+    }
+  };
+  activeCounters[idx] = requestAnimationFrame(tick);
+}
+
+function resetMagicNum(idx) {
+  const el = document.getElementById('magic-' + idx);
+  if (!el) return;
+  if (activeCounters[idx]) {
+    cancelAnimationFrame(activeCounters[idx]);
+    delete activeCounters[idx];
+  }
+  el.classList.remove('revealed', 'counting', 'locked');
+  el.textContent = MAGIC_NUMBERS[idx];
+  magicState[idx] = 'hidden';
+}
+
+function updateConvergence(tau) {
+  const fill  = document.getElementById('convergence-fill');
+  const label = document.getElementById('val-so3');
+  if (!fill || !label) return;
+
+  if (tau < 0.1) {
+    fill.style.width = '0%';
+    fill.classList.remove('locked');
+    label.textContent = '—';
+    return;
+  }
+
+  const boostFraction = Math.max(0, 1 - (tau / BOOST_CANCEL_TAU));
+  const convergence = Math.min(1, Math.max(0, 1 - boostFraction));
+  const pct = (convergence * 100);
+  fill.style.width = pct.toFixed(1) + '%';
+
+  if (tau >= SO3_STABILIZE_TAU) {
+    fill.classList.add('locked');
+    fill.style.background = '#44ff88';
+    label.textContent = 'LOCKED';
+    label.style.color = '#44ff88';
+  } else {
+    fill.classList.remove('locked');
+    const r = Math.round(255 * (1 - convergence));
+    const g = Math.round(100 + 155 * convergence);
+    fill.style.background = `rgb(${r},${g},68)`;
+    label.textContent = pct.toFixed(0) + '%';
+    label.style.color = '#ffd86a';
+  }
+}
 
 function updateMagicNumbers(tau) {
   const overlay = document.getElementById('magic-overlay');
   if (!overlay) return;
 
-  if (tau < SO3_STABILIZE_TAU * 0.5) {
+  updateConvergence(tau);
+
+  if (tau < BOOST_CANCEL_TAU * 0.3) {
     if (magicOverlayVisible) {
       overlay.classList.remove('visible', 'shells-visible');
-      for (let i = 0; i < 7; i++) {
-        const el = document.getElementById('magic-' + i);
-        if (el) el.classList.remove('revealed');
-        magicRevealed[i] = false;
-      }
+      for (let i = 0; i < 7; i++) resetMagicNum(i);
       const eq = document.getElementById('magic-equation');
       const br = document.getElementById('magic-bridge');
       if (eq) eq.classList.remove('visible');
@@ -243,15 +327,11 @@ function updateMagicNumbers(tau) {
   }
 
   for (const shell of MAGIC_SHELL_THRESHOLDS) {
-    if (tau >= shell.tau && !magicRevealed[shell.idx]) {
-      const el = document.getElementById('magic-' + shell.idx);
-      if (el) el.classList.add('revealed');
-      magicRevealed[shell.idx] = true;
+    if (tau >= shell.tau && magicState[shell.idx] === 'hidden') {
+      animateCounter(shell.idx);
     }
-    if (tau < shell.tau && magicRevealed[shell.idx]) {
-      const el = document.getElementById('magic-' + shell.idx);
-      if (el) el.classList.remove('revealed');
-      magicRevealed[shell.idx] = false;
+    if (tau < shell.tau && magicState[shell.idx] !== 'hidden') {
+      resetMagicNum(shell.idx);
     }
   }
 

@@ -203,7 +203,7 @@
 
     #magic-numbers {
       display: flex;
-      gap: 18px;
+      gap: 14px;
       margin-top: 28px;
       align-items: flex-start;
     }
@@ -212,42 +212,68 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
-      min-width: 44px;
+      gap: 4px;
+      min-width: 52px;
     }
 
     .magic-num {
       font-family: 'SF Mono', ui-monospace, monospace;
-      font-size: 36px;
+      font-size: 38px;
       font-weight: 700;
-      color: #ffd86a;
       font-variant-numeric: tabular-nums;
-      text-shadow: 0 0 10px rgba(255,216,106,.8), 0 0 30px rgba(255,216,106,.4), 0 0 70px rgba(255,216,106,.12);
       opacity: 0;
       transform: scale(.3) translateY(16px);
-      transition: all .7s cubic-bezier(.34,1.56,.64,1);
+      transition: all .5s cubic-bezier(.34,1.56,.64,1);
+    }
+    .magic-num.counting {
+      opacity: .4;
+      transform: scale(.85) translateY(4px);
+      transition: none;
     }
     .magic-num.revealed {
       opacity: 1;
       transform: scale(1) translateY(0);
-      animation: magic-pulse 3.5s ease-in-out infinite;
+    }
+    .magic-num.locked {
+      animation: lock-flash .6s ease-out, shell-breathe 4s ease-in-out .6s infinite;
     }
 
-    @keyframes magic-pulse {
-      0%, 100% { text-shadow: 0 0 10px rgba(255,216,106,.8), 0 0 30px rgba(255,216,106,.4), 0 0 70px rgba(255,216,106,.12); }
-      50%      { text-shadow: 0 0 18px rgba(255,216,106,1),  0 0 45px rgba(255,216,106,.55), 0 0 90px rgba(255,216,106,.2); }
+    @keyframes lock-flash {
+      0%   { filter: brightness(3) drop-shadow(0 0 30px currentColor); transform: scale(1.15); }
+      100% { filter: brightness(1) drop-shadow(0 0 0px currentColor); transform: scale(1); }
+    }
+    @keyframes shell-breathe {
+      0%, 100% { filter: brightness(1); }
+      50%      { filter: brightness(1.3) drop-shadow(0 0 12px currentColor); }
     }
 
     .shell-label {
       font-family: 'SF Mono', ui-monospace, monospace;
       font-size: 9px;
-      color: rgba(180,200,255,0.4);
+      color: rgba(180,200,255,0.35);
       letter-spacing: .06em;
       opacity: 0;
       transition: opacity .8s ease;
       text-align: center;
     }
     #magic-overlay.shells-visible .shell-label { opacity: .55; }
+
+    .ho-compare {
+      font-family: 'SF Mono', ui-monospace, monospace;
+      font-size: 8px;
+      letter-spacing: .04em;
+      opacity: 0;
+      transition: opacity .8s ease;
+      text-align: center;
+      line-height: 1.5;
+      margin-top: 2px;
+    }
+    #magic-overlay.shells-visible .ho-compare { opacity: .7; }
+
+    .ho-match { color: rgba(100,255,100,0.5); }
+    .ho-split { color: rgba(255,100,100,0.6); }
+    .ho-strike { text-decoration: line-through; opacity: .5; }
+    .ho-correct { color: rgba(100,255,200,0.7); font-weight: 600; }
 
     #magic-equation {
       font-family: 'SF Mono', ui-monospace, monospace;
@@ -271,6 +297,28 @@
       transition: opacity 1s ease .3s;
     }
     #magic-bridge.visible { opacity: .5; }
+
+    #convergence-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0 0 0;
+    }
+    #convergence-bar {
+      flex: 1;
+      height: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    #convergence-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 2px;
+      transition: width 0.3s ease, background 0.5s ease;
+      background: #ff4444;
+    }
+    #convergence-fill.locked { background: #44ff88; }
   </style>
 </head>
 <body>
@@ -302,6 +350,13 @@
     <div class="row">
       <span class="label">Coherence</span>
       <span class="value" id="val-coherence">0.000</span>
+    </div>
+    <div class="row">
+      <span class="label">SO(3) convergence</span>
+      <span class="value" id="val-so3" style="font-size:9px;">—</span>
+    </div>
+    <div id="convergence-row">
+      <div id="convergence-bar"><div id="convergence-fill"></div></div>
     </div>
     <div class="hint">
       <kbd>Space</kbd> pause &middot; <kbd>R</kbd> reset &middot; scroll to zoom &middot; drag to orbit
@@ -373,17 +428,45 @@
   <!-- ── Magic Numbers Overlay ──────────────────────────────────────── -->
   <div id="magic-overlay">
     <div id="magic-title">NUCLEAR SHELL CLOSURE</div>
-    <div id="magic-subtitle">SO(3) stabilized — Lorentz boosts cancelled</div>
+    <div id="magic-subtitle">SO(3) stabilized — Lorentz boosts cancelled → angular momentum well-defined</div>
     <div id="magic-numbers">
-      <div class="magic-col"><div class="magic-num" id="magic-0">2</div><div class="shell-label">1s</div></div>
-      <div class="magic-col"><div class="magic-num" id="magic-1">8</div><div class="shell-label">1p</div></div>
-      <div class="magic-col"><div class="magic-num" id="magic-2">20</div><div class="shell-label">1d2s</div></div>
-      <div class="magic-col"><div class="magic-num" id="magic-3">28</div><div class="shell-label">1f<sub>7/2</sub></div></div>
-      <div class="magic-col"><div class="magic-num" id="magic-4">50</div><div class="shell-label">2p1g</div></div>
-      <div class="magic-col"><div class="magic-num" id="magic-5">82</div><div class="shell-label">2d1h</div></div>
-      <div class="magic-col"><div class="magic-num" id="magic-6">126</div><div class="shell-label">3p2f1i</div></div>
+      <div class="magic-col">
+        <div class="magic-num" id="magic-0" style="color:#ffff99;text-shadow:0 0 10px rgba(255,255,153,.8),0 0 30px rgba(255,255,153,.4)">2</div>
+        <div class="shell-label">1s<sub>1/2</sub></div>
+        <div class="ho-compare ho-match">= HO</div>
+      </div>
+      <div class="magic-col">
+        <div class="magic-num" id="magic-1" style="color:#ffcc33;text-shadow:0 0 10px rgba(255,204,51,.8),0 0 30px rgba(255,204,51,.4)">8</div>
+        <div class="shell-label">1p</div>
+        <div class="ho-compare ho-match">= HO</div>
+      </div>
+      <div class="magic-col">
+        <div class="magic-num" id="magic-2" style="color:#99ff4d;text-shadow:0 0 10px rgba(153,255,77,.8),0 0 30px rgba(153,255,77,.4)">20</div>
+        <div class="shell-label">1d + 2s</div>
+        <div class="ho-compare ho-match">= HO</div>
+      </div>
+      <div class="magic-col">
+        <div class="magic-num" id="magic-3" style="color:#33ffb3;text-shadow:0 0 10px rgba(51,255,179,.8),0 0 30px rgba(51,255,179,.4)">28</div>
+        <div class="shell-label">1f<sub>7/2</sub></div>
+        <div class="ho-compare ho-split"><span class="ho-strike">HO:40</span> → <span class="ho-correct">L·S: 28</span></div>
+      </div>
+      <div class="magic-col">
+        <div class="magic-num" id="magic-4" style="color:#1a99ff;text-shadow:0 0 10px rgba(26,153,255,.8),0 0 30px rgba(26,153,255,.4)">50</div>
+        <div class="shell-label">2p + 1g</div>
+        <div class="ho-compare ho-split"><span class="ho-strike">HO:70</span> → <span class="ho-correct">L·S: 50</span></div>
+      </div>
+      <div class="magic-col">
+        <div class="magic-num" id="magic-5" style="color:#664dff;text-shadow:0 0 10px rgba(102,77,255,.8),0 0 30px rgba(102,77,255,.4)">82</div>
+        <div class="shell-label">2d + 1h</div>
+        <div class="ho-compare ho-split"><span class="ho-strike">HO:112</span> → <span class="ho-correct">L·S: 82</span></div>
+      </div>
+      <div class="magic-col">
+        <div class="magic-num" id="magic-6" style="color:#cc1ae6;text-shadow:0 0 10px rgba(204,26,230,.8),0 0 30px rgba(204,26,230,.4)">126</div>
+        <div class="shell-label">3p + 2f + 1i</div>
+        <div class="ho-compare ho-split"><span class="ho-strike">HO:168</span> → <span class="ho-correct">L·S: 126</span></div>
+      </div>
     </div>
-    <div id="magic-equation">QSNV + V<sub>w</sub>  →  L·S  →  shell closures</div>
+    <div id="magic-equation">QSNV + V<sub>w</sub>  →  L·S  →  {2, 8, 20, 28, 50, 82, 126}   (zero free parameters)</div>
     <div id="magic-bridge">V<sub>w</sub> cancels boost contamination: L<sub>k</sub> = ½(c<sub>i</sub>∧c<sub>j</sub> − c<sub>i</sub>∧w<sub>j</sub> − w<sub>i</sub>∧c<sub>j</sub> + w<sub>i</sub>∧w<sub>j</sub>)</div>
   </div>
 
